@@ -17,13 +17,12 @@ setup(
         'openjournal',
         'openjournal.subapps',
         'openjournal.routes',
-        'openjournal.test'
         ],
     platforms='any',
     scripts=[],
     license='LICENSE',
     install_requires=[
-        'waltz >= 0.1.64',
+        'waltz >= 0.1.68',
         'lepl >= 5.1.3',
         'whoosh >= 2.4.1',
         'pypdf',
