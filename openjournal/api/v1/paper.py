@@ -1,56 +1,24 @@
 #-*- coding: utf-8 -*-
 
 """
+    api.v1.paper
+    ~~~~~~~~~~~~
 
+    :copyright: (c) 2012 by Mek
+    :license: BSD, see LICENSE for more details.
 """
 
 import os
 from datetime import datetime
+from waltz import Storage
 from lazydb import Db
-
-class Storage(dict):
-    """
-    A Storage object is like a dictionary except `obj.foo` can be used
-    in addition to `obj['foo']`.
-    
-        >>> o = storage(a=1)
-        >>> o.a
-        1
-        >>> o['a']
-        1
-        >>> o.a = 2
-        >>> o['a']
-        2
-        >>> del o.a
-        >>> o.a
-        Traceback (most recent call last):
-            ...
-        AttributeError: 'a'
-    
-    """
-    def __getattr__(self, key): 
-        try:
-            return self[key]
-        except KeyError, k:
-            raise AttributeError, k
-    
-    def __setattr__(self, key, value): 
-        self[key] = value
-    
-    def __delattr__(self, key):
-        try:
-            del self[key]
-        except KeyError, k:
-            raise AttributeError, k
-    
-    def __repr__(self):     
-        return '<Storage ' + dict.__repr__(self) + '>'
 
 class Paper(Storage):
 
-    def __init__(self, pid):
-        self.pid = pid
-        for k, v in self.get(pid).items():
+    def __init__(self, pid, paper=None):
+        self.pid = int(pid)
+        paper = paper if paper else self.get(self.pid)        
+        for k, v in paper.items():
             setattr(self, k, v)
     
     def __repr__(self):     
@@ -62,22 +30,25 @@ class Paper(Storage):
 
     @classmethod
     def getall(cls):
-        return cls.db().get('papers')
+        return [Paper(paper['pid'], paper=paper) for \
+                    paper in cls.db().get('papers')]
     
     @classmethod
     def get(cls, pid):
         papers = cls.getall()
-        if pid:
+        if type(pid) is int:
             try:
                 return papers[pid]
             except IndexError as e:
                 raise IndexError("No paper with pid %s. Details: %s" % (pid, e))
-        raise ValueError("Paper.get(pid) invoked with invald or non-existing id: %s" % pid)
+        raise ValueError("Paper.get(pid) invoked with invalid or " \
+                             "non-existing id: %s" % pid)
         
     @staticmethod
     def decay(score, t):
-        """seomoz.org/blog/reddit-stumbleupon-delicious-and-hacker-news-algorithms-exposed
-        convert time to: hours since submission
+        """seomoz.org/blog/reddit-stumbleupon-delicious-and-\
+        hacker-news-algorithms-exposed convert time to: hours since
+        submission
         """
         return pow((score - 1) / (t + 2), 1.5)
 
@@ -116,9 +87,68 @@ class Paper(Storage):
         """
         return cls.decay(cls.papers())[pid]['score']
 
+    def activate(self, state=True):
+        self.enabled = state
+        return self.save()
+
+    def save(self):
+        papers = self.getall()
+        papers[self.pid] = dict(self)
+        return self.db().put('papers', papers)
+
+    def add_comment(self, cid, author, content="", time=None,
+                    votes=0, enabled=True):
+        if not content:
+            raise ValueError("Comment must be a str with len() > 0")
+        cid = 0 if not self.comments else int(self.comments[-1]['cid']) + 1
+        time = time if time else datetime.utcnow().ctime()
+        self.comments.append({'pid': self.pid,
+                              'cid': cid,
+                              'enabled': enabled,
+                              'time': time,
+                              'username': author,
+                              'comment': content,
+                              'edits': []
+                              })
+        self.save()
+        return cid
+
+    def edit_comment(self, cid, content="", time=None, **comment):
+        """**comment includes
+        """
+        if not content:
+            raise ValueError("Comment must be a str with len() > 0")
+        try:
+            cid = int(cid)
+        except (TypeError, ValueError) as e:            
+            raise # case cid is None or invalid literal w/ base 10
+        time = time if time else datetime.utcnow().ctime()
+        for index, comment in enumerate(self.comments):
+            if self.comments[index]['cid'] == cid:
+                c = self.comments[cid]
+                if not 'edits' in c:
+                    c['edits'] = [time]
+                else:
+                    c['edits'] += [time]
+                c['comment'] = content
+                c.update(comment)
+                self.comments[cid] = c
+        self.save()
+
+    def activate_comment(self, cid, state=True):
+        try:
+            cid = int(cid)
+        except (TypeError, ValueError) as e:            
+            raise # case cid is None or invalid literal w/ base 10
+        for index, comment in enumerate(self.comments):
+            if self.comments[index]['cid'] == cid:
+                self.comments[cid]['enabled'] = state
+        self.save()
+        
 class Comment(Storage):
-    def __init__(self, pid, cid):
-        for k, v in self.get(pid, cid).items():
+    def __init__(self, pid, cid, comment=None):
+        comment = comment if comment else self.get(pid, cid)
+        for k, v in comment.items():
             setattr(self, k, v)
 
     def edit(self, comment):
@@ -161,7 +191,7 @@ class Comment(Storage):
                                      (pid, cid, e))
             except IndexError as e:
                 raise IndexError("No paper with pid %s. Details: %s" % (pid, e))
-        raise ValueError("Comment.get(pid) invoked with invald or non-existant " \
+        raise ValueError("Comment.get(pid) invoked with invalid or non-existant " \
                              "<pid: %s> or <cid: %s>" % (cid, pid))
 
     def __repr__(self):     

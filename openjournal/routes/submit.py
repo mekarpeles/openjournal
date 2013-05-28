@@ -1,8 +1,8 @@
-from waltz import web, render, session, User
+from waltz import web, render, session
 from datetime import datetime
 from lazydb.lazydb import Db
 from api.v1.search import Search
-from utils import record_vote, record_submission
+from api.v1.user import record_vote, record_submission
 
 
 class Submit:
@@ -16,7 +16,7 @@ class Submit:
             raise web.seeother('/register')
 
         i = web.input(authors="", url=None, title=None, comments=[],
-                      year=None, enabled=False, subtitle='',
+                      year=None, enabled=True, subtitle='',
                       time=datetime.utcnow(), votes=1,
                       cite={'mla': '', 'apa': '', 'chicago': ''})
         db = Db('db/openjournal')
